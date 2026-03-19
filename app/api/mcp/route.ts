@@ -25,7 +25,6 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
 
 const handler = createMcpHandler(
   (server) => {
-    // ── Tool 1: Read — retrieve scene context ──
     server.tool(
       "get_scene_context",
       "Retrieve full continuity context before writing a scene. Returns world state, active threads, recent scenes, relationships, knowledge, knowledge boundaries, and semantic matches. Call this when the player provides a Start Block.",
@@ -62,10 +61,9 @@ const handler = createMcpHandler(
       }
     );
 
-    // ── Tool 2: Write — save scene bundle ──
     server.tool(
       "save_scene_bundle",
-      "Save all durable consequences after a completed act. Call this when the player says 'end of act'. Sends scene data and all memory layers in one coordinated write. The function enforces correct order internally: scene first, then knowledge before boundaries, then everything else. If scene save fails, all remaining writes are skipped.",
+      "Save all durable consequences after a completed act. Call this when the player says end of act. Sends scene data and all memory layers in one coordinated write. The function enforces correct order internally: scene first, then knowledge before boundaries, then everything else. If scene save fails, all remaining writes are skipped.",
       {
         scene: z.object({
           scene_id: z.string().describe("Scene ID in format S3E4-ACT01-SC01"),
@@ -171,8 +169,10 @@ const handler = createMcpHandler(
     );
   },
   {
-    name: "originals-story-engine",
-    version: "1.0.0",
+    capabilities: {},
+  },
+  {
+    basePath: "/api",
   }
 );
 
