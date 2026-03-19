@@ -20,9 +20,10 @@ const BASE_HEADERS = {
   Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
 };
 
+// Helper to call Supabase Edge Functions with timeout
 async function callEdgeFunction(functionName: string, payload: unknown) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
   try {
     console.log("[MCP] Calling:", functionName);
@@ -38,11 +39,12 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(
-        `Edge function ${functionName} failed (${response.status}): ${text.slice(0, 300)}`
-      );
+        `Edge function ${functionName} failed (${response.status}): ${text.slice(0, 500)}`
+      ); // limit error text
     }
 
-    return await response.json();
+    const json = await response.json();
+    return json;
   } finally {
     clearTimeout(timeout);
   }
@@ -55,7 +57,9 @@ const handler = createMcpHandler(
       "Retrieve full continuity context before writing a scene. Returns world state, active threads, recent scenes, relationships, knowledge, knowledge boundaries, and semantic matches. Call this when the player provides a Start Block.",
       {
         scene_id: z.string().describe("Scene ID in format S3E4-ACT01-SC01"),
-        characters_present: z.array(z.string()).describe("Characters in the scene"),
+        characters_present: z.array(z.string())
+          .min(1, "characters_present cannot be empty")
+          .describe("Characters in the scene"),
         location: z.string().optional().describe("Scene location"),
         query: z.string().optional().describe("Optional focus query for semantic search"),
         recent_scene_limit: z.number().optional().describe("How many recent scenes to retrieve"),
@@ -64,10 +68,6 @@ const handler = createMcpHandler(
         semantic_per_type_limit: z.number().optional().describe("Max matches per type"),
       },
       async (params) => {
-        if (params.characters_present.length === 0) {
-          throw new Error("characters_present cannot be empty");
-        }
-
         const result = await callEdgeFunction("get-scene-context-v2", {
           scene_id: params.scene_id,
           characters_present: params.characters_present,
@@ -83,7 +83,7 @@ const handler = createMcpHandler(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result, null, 2).slice(0, 5000), // truncate long payloads for MCP
             },
           ],
         };
@@ -190,16 +190,12 @@ const handler = createMcpHandler(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result, null, 2).slice(0, 5000), // truncate large response
             },
           ],
         };
       }
     );
-  },
-  {},
-  {
-    basePath: "/api",
   }
 );
 
