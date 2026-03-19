@@ -196,6 +196,10 @@ const handler = createMcpHandler(
         };
       }
     );
+  },
+  {},
+  {
+    basePath: "/api",
   }
 );
 
