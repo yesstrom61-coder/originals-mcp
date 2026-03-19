@@ -1,26 +1,51 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY!;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error("Missing Supabase environment variables");
+}
+
+const DEFAULTS = {
+  recentScenes: 5,
+  semanticMatches: 8,
+  threshold: 0.2,
+  perType: 2,
+};
+
+const BASE_HEADERS = {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+};
 
 async function callEdgeFunction(functionName: string, payload: unknown) {
-  const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Edge function ${functionName} failed (${response.status}): ${text}`);
+  try {
+    console.log("[MCP] Calling:", functionName);
+    const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: BASE_HEADERS,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Edge function ${functionName} failed (${response.status}): ${text.slice(0, 300)}`
+      );
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return response.json();
 }
 
 const handler = createMcpHandler(
@@ -33,21 +58,25 @@ const handler = createMcpHandler(
         characters_present: z.array(z.string()).describe("Characters in the scene"),
         location: z.string().optional().describe("Scene location"),
         query: z.string().optional().describe("Optional focus query for semantic search"),
-        recent_scene_limit: z.number().optional().describe("How many recent scenes to retrieve (default 5)"),
-        semantic_match_count: z.number().optional().describe("How many semantic matches (default 8)"),
-        semantic_match_threshold: z.number().optional().describe("Similarity threshold 0-1 (default 0.2)"),
-        semantic_per_type_limit: z.number().optional().describe("Max matches per type (default 2)"),
+        recent_scene_limit: z.number().optional().describe("How many recent scenes to retrieve"),
+        semantic_match_count: z.number().optional().describe("How many semantic matches"),
+        semantic_match_threshold: z.number().optional().describe("Similarity threshold 0-1"),
+        semantic_per_type_limit: z.number().optional().describe("Max matches per type"),
       },
       async (params) => {
+        if (params.characters_present.length === 0) {
+          throw new Error("characters_present cannot be empty");
+        }
+
         const result = await callEdgeFunction("get-scene-context-v2", {
           scene_id: params.scene_id,
           characters_present: params.characters_present,
           location: params.location ?? "",
           query: params.query ?? null,
-          recent_scene_limit: params.recent_scene_limit ?? 5,
-          semantic_match_count: params.semantic_match_count ?? 8,
-          semantic_match_threshold: params.semantic_match_threshold ?? 0.2,
-          semantic_per_type_limit: params.semantic_per_type_limit ?? 2,
+          recent_scene_limit: params.recent_scene_limit ?? DEFAULTS.recentScenes,
+          semantic_match_count: params.semantic_match_count ?? DEFAULTS.semanticMatches,
+          semantic_match_threshold: params.semantic_match_threshold ?? DEFAULTS.threshold,
+          semantic_per_type_limit: params.semantic_per_type_limit ?? DEFAULTS.perType,
         });
 
         return {
@@ -63,11 +92,11 @@ const handler = createMcpHandler(
 
     server.tool(
       "save_scene_bundle",
-      "Save all durable consequences after a completed act. Call this when the player says end of act. Sends scene data and all memory layers in one coordinated write. The function enforces correct order internally: scene first, then knowledge before boundaries, then everything else. If scene save fails, all remaining writes are skipped.",
+      "Save all durable consequences after a completed act. Call this when the player says end of act. Sends scene data and all memory layers in one coordinated write. The function enforces correct order internally. If scene save fails, all remaining writes are skipped.",
       {
         scene: z.object({
           scene_id: z.string().describe("Scene ID in format S3E4-ACT01-SC01"),
-          summary: z.string().describe("Brief summary of what happened in the scene"),
+          summary: z.string().describe("Brief summary of what happened"),
           location: z.string().optional(),
           characters_present: z.array(z.string()).optional(),
           major_events: z.string().optional(),
@@ -167,9 +196,6 @@ const handler = createMcpHandler(
         };
       }
     );
-  },
-  {
-    capabilities: {},
   },
   {
     basePath: "/api",
