@@ -53,7 +53,7 @@ const handler = createMcpHandler(
       {
         title: "Get Scene Context",
         description:
-          "Retrieve full continuity context before writing a scene. Returns world state, active threads, recent scenes, relationships, knowledge, knowledge boundaries, and semantic matches.",
+          "Retrieve full continuity context before writing a scene.",
         inputSchema: {
           scene_id: z.string(),
           characters_present: z.array(z.string()).min(1),
@@ -209,19 +209,28 @@ const handler = createMcpHandler(
         const payload = {
           ...params,
 
-          // ✅ FIX 1 (unchanged logic style)
+          // ✅ turns fix (safe)
           turns: params.turns?.map((t: Record<string, unknown>) => ({
             ...t,
-            scene_id: sceneId,
+            scene_id: (t as any).scene_id ?? sceneId,
           })),
 
-          // ✅ FIX 2 (same pattern applied)
+          // ✅ divergence fix (safe)
           divergence: params.divergence
             ? {
                 ...params.divergence,
-                introduced_in_scene: sceneId,
+                introduced_in_scene:
+                  (params.divergence as any).introduced_in_scene ?? sceneId,
               }
             : undefined,
+
+          // ✅ threads fix (safe)
+          threads: params.threads?.map((th: Record<string, unknown>) => ({
+            ...th,
+            introduced_in_scene:
+              (th as any).introduced_in_scene ?? sceneId,
+            scene_id: (th as any).scene_id ?? sceneId,
+          })),
         };
 
         const result = await callEdgeFunction("sync-scene-bundle", payload);
