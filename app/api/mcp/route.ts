@@ -190,7 +190,7 @@ const handler = createMcpHandler(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(result, null, 2).slice(0, 5000), // truncate large response
+              text: JSON.stringify(result, null, 2), // truncate large response
             },
           ],
         };
