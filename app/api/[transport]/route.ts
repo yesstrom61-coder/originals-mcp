@@ -53,18 +53,12 @@ const handler = createMcpHandler(
       {
         title: "Get Scene Context",
         description:
-          "Retrieve full continuity context before writing a scene. Returns world state, active threads, recent scenes, relationships, knowledge, knowledge boundaries, and semantic matches. Call this when the player provides a Start Block.",
+          "Retrieve full continuity context before writing a scene. Returns world state, active threads, recent scenes, relationships, knowledge, knowledge boundaries, and semantic matches.",
         inputSchema: {
-          scene_id: z.string().describe("Scene ID in format S3E4-ACT01-SC01"),
-          characters_present: z
-            .array(z.string())
-            .min(1)
-            .describe("Characters in the scene"),
-          location: z.string().optional().describe("Scene location"),
-          query: z
-            .string()
-            .optional()
-            .describe("Optional focus query for semantic search"),
+          scene_id: z.string(),
+          characters_present: z.array(z.string()).min(1),
+          location: z.string().optional(),
+          query: z.string().optional(),
           recent_scene_limit: z.number().optional(),
           semantic_match_count: z.number().optional(),
           semantic_match_threshold: z.number().optional(),
@@ -100,7 +94,7 @@ const handler = createMcpHandler(
       {
         title: "Save Scene Bundle",
         description:
-          "Save all durable consequences after a completed act. Call this when the player says end of act. Sends scene data and all memory layers in one coordinated write.",
+          "Save all durable consequences after a completed act.",
         inputSchema: {
           scene: z.object({
             scene_id: z.string(),
@@ -210,13 +204,26 @@ const handler = createMcpHandler(
         },
       },
       async (params) => {
+        const sceneId = params.scene?.scene_id;
+
         const payload = {
           ...params,
+
+          // ✅ FIX 1 (unchanged logic style)
           turns: params.turns?.map((t: Record<string, unknown>) => ({
             ...t,
-            scene_id: params.scene?.scene_id,
+            scene_id: sceneId,
           })),
+
+          // ✅ FIX 2 (same pattern applied)
+          divergence: params.divergence
+            ? {
+                ...params.divergence,
+                introduced_in_scene: sceneId,
+              }
+            : undefined,
         };
+
         const result = await callEdgeFunction("sync-scene-bundle", payload);
 
         return {
