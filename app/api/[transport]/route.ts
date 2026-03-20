@@ -36,7 +36,10 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(
-        `Edge function ${functionName} failed (${response.status}): ${text.slice(0, 500)}`
+        `Edge function ${functionName} failed (${response.status}): ${text.slice(
+          0,
+          500
+        )}`
       );
     }
 
@@ -46,14 +49,31 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
   }
 }
 
+// ✅ Reusable injector function
+function injectSceneContext<T extends Record<string, any>>(
+  items: T[] | undefined,
+  sceneId: string,
+  fields: string[]
+): T[] | undefined {
+  if (!items) return undefined;
+  return items.map((item) => {
+    const copy = { ...item };
+    fields.forEach((f) => {
+      if (copy[f] === undefined || copy[f] === null) {
+        copy[f] = sceneId;
+      }
+    });
+    return copy;
+  });
+}
+
 const handler = createMcpHandler(
   (server) => {
     server.registerTool(
       "get_scene_context",
       {
         title: "Get Scene Context",
-        description:
-          "Retrieve full continuity context before writing a scene.",
+        description: "Retrieve full continuity context before writing a scene.",
         inputSchema: {
           scene_id: z.string(),
           characters_present: z.array(z.string()).min(1),
@@ -93,8 +113,7 @@ const handler = createMcpHandler(
       "save_scene_bundle",
       {
         title: "Save Scene Bundle",
-        description:
-          "Save all durable consequences after a completed act.",
+        description: "Save all durable consequences after a completed act.",
         inputSchema: {
           scene: z.object({
             scene_id: z.string(),
@@ -208,29 +227,27 @@ const handler = createMcpHandler(
 
         const payload = {
           ...params,
-
-          // ✅ turns fix (safe)
-          turns: params.turns?.map((t: Record<string, unknown>) => ({
-            ...t,
-            scene_id: (t as any).scene_id ?? sceneId,
-          })),
-
-          // ✅ divergence fix (safe)
+          turns: injectSceneContext(params.turns, sceneId, ["scene_id"]),
           divergence: params.divergence
-            ? {
-                ...params.divergence,
-                introduced_in_scene:
-                  (params.divergence as any).introduced_in_scene ?? sceneId,
-              }
+            ? injectSceneContext([params.divergence], sceneId, [
+                "introduced_in_scene",
+              ])[0]
             : undefined,
-
-          // ✅ threads fix (safe)
-          threads: params.threads?.map((th: Record<string, unknown>) => ({
-            ...th,
-            introduced_in_scene:
-              (th as any).introduced_in_scene ?? sceneId,
-            scene_id: (th as any).scene_id ?? sceneId,
-          })),
+          threads: injectSceneContext(params.threads, sceneId, [
+            "scene_id",
+            "introduced_in_scene",
+          ]),
+          relationships: injectSceneContext(params.relationships, sceneId, [
+            "scene_id",
+            "last_updated_scene",
+            "last_meaningful_shift",
+          ]),
+          knowledge: injectSceneContext(params.knowledge, sceneId, [
+            "introduced_in_scene",
+          ]),
+          boundaries: injectSceneContext(params.boundaries, sceneId, [
+            "introduced_in_scene",
+          ]),
         };
 
         const result = await callEdgeFunction("sync-scene-bundle", payload);
