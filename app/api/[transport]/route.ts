@@ -210,7 +210,14 @@ const handler = createMcpHandler(
         },
       },
       async (params) => {
-        const result = await callEdgeFunction("sync-scene-bundle", params);
+        const payload = {
+          ...params,
+          turns: params.turns?.map((t: Record<string, unknown>) => ({
+            ...t,
+            scene_id: params.scene.scene_id,
+          })),
+        };
+        const result = await callEdgeFunction("sync-scene-bundle", payload);
 
         return {
           content: [
