@@ -1,13 +1,6 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error("Missing Supabase environment variables");
-}
-
 const DEFAULTS = {
   recentScenes: 5,
   semanticMatches: 8,
@@ -15,15 +8,17 @@ const DEFAULTS = {
   perType: 2,
 };
 
-const BASE_HEADERS = {
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-};
 
 // Helper to call Supabase Edge Functions with timeout
 async function callEdgeFunction(functionName: string, payload: unknown) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Missing Supabase environment variables");
+  }
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
     console.log("[MCP] Calling:", functionName);
@@ -31,7 +26,10 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
 
     const response = await fetch(url, {
       method: "POST",
-      headers: BASE_HEADERS,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -40,11 +38,10 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
       const text = await response.text();
       throw new Error(
         `Edge function ${functionName} failed (${response.status}): ${text.slice(0, 500)}`
-      ); // limit error text
+      );
     }
 
-    const json = await response.json();
-    return json;
+    return await response.json();
   } finally {
     clearTimeout(timeout);
   }
