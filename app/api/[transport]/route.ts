@@ -49,7 +49,7 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
   }
 }
 
-// ✅ Reusable injector function
+// ✅ Updated injector (force inheritance)
 function injectSceneContext<T extends Record<string, any>>(
   items: T[] | undefined,
   sceneId: string,
@@ -59,9 +59,7 @@ function injectSceneContext<T extends Record<string, any>>(
   return items.map((item) => {
     const copy = { ...item };
     fields.forEach((f) => {
-      if (copy[f] === undefined || copy[f] === null) {
-        copy[f] = sceneId;
-      }
+      copy[f] = copy[f] ?? sceneId; // 🔥 force fallback
     });
     return copy;
   });
