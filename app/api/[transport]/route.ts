@@ -49,6 +49,16 @@ async function callEdgeFunction(functionName: string, payload: unknown) {
   }
 }
 
+// ✅ Hard enforcement of scene_id
+function ensureSceneId(id?: string) {
+  if (!id) {
+    throw new Error(
+      "[save_scene_bundle] Missing scene.scene_id — cannot persist data safely"
+    );
+  }
+  return id;
+}
+
 // ✅ Updated injector (force inheritance)
 function injectSceneContext<T extends Record<string, any>>(
   items: T[] | undefined,
@@ -59,7 +69,7 @@ function injectSceneContext<T extends Record<string, any>>(
   return items.map((item) => {
     const copy = { ...item };
     fields.forEach((f) => {
-      copy[f] = copy[f] ?? sceneId; // 🔥 force fallback
+      copy[f] = copy[f] ?? sceneId;
     });
     return copy;
   });
@@ -221,7 +231,8 @@ const handler = createMcpHandler(
         },
       },
       async (params) => {
-        const sceneId = params.scene?.scene_id;
+        // ✅ Enforced sceneId
+        const sceneId = ensureSceneId(params.scene?.scene_id);
 
         const payload = {
           ...params,
